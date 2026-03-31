@@ -2,16 +2,17 @@
 
 This setup keeps the backend on Railway and the frontend on Vercel:
 
-- Railway runs the Flask backend from `backend/Dockerfile`
+- Railway runs the Flask backend from `backend/` using Railpack and Gunicorn
 - Vercel serves the Vue/Vite app from `frontend/`
 - The frontend calls the Railway backend directly via `VITE_API_BASE_URL`
 
 ## Backend on Railway
 
 1. Create a Railway service from this repository.
-2. Keep the repository root as the service root. Railway will pick up [`railway.json`](../railway.json), which points to `backend/Dockerfile`.
-3. Add a persistent volume mounted at `/app/backend/uploads`.
-4. Set these Railway variables:
+2. Set the Railway root directory to `/backend`.
+3. Keep [`railway.json`](../railway.json) in the repository root. Railway will use it to run Railpack with `pip install -r requirements.txt` and start Gunicorn with `wsgi:app`.
+4. Add a persistent volume mounted at `/app/backend/uploads`.
+5. Set these Railway variables:
 
 ```env
 LLM_API_KEY=...
@@ -23,7 +24,7 @@ FLASK_DEBUG=false
 CORS_ORIGINS=https://your-frontend.vercel.app
 ```
 
-5. Generate a Railway public domain for the backend service.
+6. Generate a Railway public domain for the backend service.
 
 Notes:
 

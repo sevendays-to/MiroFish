@@ -180,7 +180,7 @@ Reads `.env` from root directory by default, maps ports `3000 (frontend) / 5001 
 
 For a production-friendly split deployment:
 
-- deploy the Flask backend on Railway with the repo root and `backend/Dockerfile`
+- deploy the Flask backend on Railway with `backend/` as the root directory
 - deploy the Vite frontend on Vercel with `frontend/` as the project root
 - point `VITE_API_BASE_URL` at the public Railway backend domain
 

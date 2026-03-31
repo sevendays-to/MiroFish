@@ -180,7 +180,7 @@ docker compose up -d
 
 推荐生产环境采用前后端分离部署：
 
-- Railway 使用仓库根目录与 `backend/Dockerfile` 部署 Flask 后端
+- Railway 使用 `backend/` 作为根目录部署 Flask 后端
 - Vercel 使用 `frontend/` 作为项目根目录部署前端
 - 通过 `VITE_API_BASE_URL` 将前端指向 Railway 公开域名
 
