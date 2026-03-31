@@ -20,6 +20,7 @@ def create_app(config_class=Config):
     """Flask应用工厂函数"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    cors_origins = config_class.get_cors_origins()
     
     # 设置JSON编码：确保中文直接显示（而不是 \uXXXX 格式）
     # Flask >= 2.3 使用 app.json.ensure_ascii，旧版本使用 JSON_AS_ASCII 配置
@@ -40,13 +41,14 @@ def create_app(config_class=Config):
         logger.info("=" * 50)
     
     # 启用CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-    
+    CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+
     # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
     from .services.simulation_runner import SimulationRunner
     SimulationRunner.register_cleanup()
     if should_log_startup:
         logger.info("已注册模拟进程清理函数")
+        logger.info(f"CORS origins: {cors_origins}")
     
     # 请求日志中间件
     @app.before_request
@@ -77,4 +79,3 @@ def create_app(config_class=Config):
         logger.info("MiroFish Backend 启动完成")
     
     return app
-
