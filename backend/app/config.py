@@ -23,6 +23,7 @@ class Config:
     # Flask配置
     SECRET_KEY = os.environ.get('SECRET_KEY', 'mirofish-secret-key')
     DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    CORS_ORIGINS = os.environ.get('CORS_ORIGINS')
     
     # JSON配置 - 禁用ASCII转义，让中文直接显示（而不是 \uXXXX 格式）
     JSON_AS_ASCII = False
@@ -62,7 +63,24 @@ class Config:
     REPORT_AGENT_MAX_TOOL_CALLS = int(os.environ.get('REPORT_AGENT_MAX_TOOL_CALLS', '5'))
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
-    
+
+    @classmethod
+    def get_cors_origins(cls):
+        """解析CORS origins配置"""
+        raw_origins = (cls.CORS_ORIGINS or '').strip()
+
+        if not raw_origins:
+            return "*" if cls.DEBUG else []
+
+        if raw_origins == '*':
+            return "*"
+
+        return [
+            origin.strip().rstrip('/')
+            for origin in raw_origins.split(',')
+            if origin.strip()
+        ]
+
     @classmethod
     def validate(cls):
         """验证必要配置"""
@@ -71,5 +89,8 @@ class Config:
             errors.append("LLM_API_KEY 未配置")
         if not cls.ZEP_API_KEY:
             errors.append("ZEP_API_KEY 未配置")
+        if not cls.DEBUG and cls.SECRET_KEY == 'mirofish-secret-key':
+            errors.append("SECRET_KEY 未配置")
+        if not cls.DEBUG and not cls.get_cors_origins():
+            errors.append("CORS_ORIGINS 未配置")
         return errors
-

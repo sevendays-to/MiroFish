@@ -176,6 +176,16 @@ docker compose up -d
 
 > 在 `docker-compose.yml` 中已通过注释提供加速镜像地址，可按需替换
 
+### 三、生产部署（Railway 后端 + Vercel 前端）
+
+推荐生产环境采用前后端分离部署：
+
+- Railway 使用仓库根目录与 `backend/Dockerfile` 部署 Flask 后端
+- Vercel 使用 `frontend/` 作为项目根目录部署前端
+- 通过 `VITE_API_BASE_URL` 将前端指向 Railway 公开域名
+
+完整步骤、环境变量、持久化卷挂载路径与验收检查见 [`docs/deploy-railway-vercel.md`](./docs/deploy-railway-vercel.md)。
+
 ## 📬 更多交流
 
 <div align="center">

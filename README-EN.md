@@ -176,6 +176,16 @@ Reads `.env` from root directory by default, maps ports `3000 (frontend) / 5001 
 
 > Mirror address for faster pulling is provided as comments in `docker-compose.yml`, replace if needed.
 
+### Option 3: Production Deploy (Railway backend + Vercel frontend)
+
+For a production-friendly split deployment:
+
+- deploy the Flask backend on Railway with the repo root and `backend/Dockerfile`
+- deploy the Vite frontend on Vercel with `frontend/` as the project root
+- point `VITE_API_BASE_URL` at the public Railway backend domain
+
+See [`docs/deploy-railway-vercel.md`](./docs/deploy-railway-vercel.md) for the exact setup, required environment variables, persistent volume path, and smoke checks.
+
 ## 📬 Join the Conversation
 
 <div align="center">

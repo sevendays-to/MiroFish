@@ -24,6 +24,10 @@ from app.config import Config
 
 def main():
     """主函数"""
+    if not Config.DEBUG:
+        print("run.py 仅用于本地开发，请在生产环境使用 gunicorn 启动 wsgi:app")
+        sys.exit(1)
+
     # 验证配置
     errors = Config.validate()
     if errors:
@@ -47,4 +51,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
