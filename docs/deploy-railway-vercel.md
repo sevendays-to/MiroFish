@@ -28,7 +28,7 @@ CORS_ORIGINS=https://your-frontend.vercel.app
 
 Notes:
 
-- Python is pinned via [`backend/.python-version`](../backend/.python-version) to stay compatible with `camel-oasis`.
+- Python is pinned via [`backend/.python-version`](../backend/.python-version) to Python 3.11 because `camel-oasis` requires `<3.12`.
 - Production boot uses Gunicorn via [`backend/wsgi.py`](../backend/wsgi.py) and [`backend/gunicorn.conf.py`](../backend/gunicorn.conf.py).
 - There is intentionally no `backend/Dockerfile` anymore. If Railway still shows Docker, the service is deploying an older commit or the wrong branch/root directory.
 - The backend is intentionally fixed to a single Gunicorn worker. Do not enable multi-worker or horizontal scaling for this v1 deployment because task state and simulations rely on local files and in-memory state.
