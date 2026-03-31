@@ -10,7 +10,7 @@ This setup keeps the backend on Railway and the frontend on Vercel:
 
 1. Create a Railway service from this repository.
 2. Set the Railway root directory to `/backend`.
-3. Keep [`railway.json`](../railway.json) in the repository root. Railway will use it to run Railpack with `pip install -r requirements.txt` and start Gunicorn with `wsgi:app`.
+3. Railway will read [`backend/railway.json`](../backend/railway.json), which forces Railpack and starts Gunicorn with `wsgi:app`.
 4. Add a persistent volume mounted at `/app/backend/uploads`.
 5. Set these Railway variables:
 
@@ -29,6 +29,7 @@ CORS_ORIGINS=https://your-frontend.vercel.app
 Notes:
 
 - Production boot uses Gunicorn via [`backend/wsgi.py`](../backend/wsgi.py) and [`backend/gunicorn.conf.py`](../backend/gunicorn.conf.py).
+- There is intentionally no `backend/Dockerfile` anymore. If Railway still shows Docker, the service is deploying an older commit or the wrong branch/root directory.
 - The backend is intentionally fixed to a single Gunicorn worker. Do not enable multi-worker or horizontal scaling for this v1 deployment because task state and simulations rely on local files and in-memory state.
 - Deploys or restarts can interrupt active simulations. Schedule deploys outside active runs.
 

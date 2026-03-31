@@ -183,6 +183,7 @@ For a production-friendly split deployment:
 - deploy the Flask backend on Railway with `backend/` as the root directory
 - deploy the Vite frontend on Vercel with `frontend/` as the project root
 - point `VITE_API_BASE_URL` at the public Railway backend domain
+- Railway backend config now lives in `backend/railway.json`
 
 See [`docs/deploy-railway-vercel.md`](./docs/deploy-railway-vercel.md) for the exact setup, required environment variables, persistent volume path, and smoke checks.
 

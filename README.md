@@ -183,6 +183,7 @@ docker compose up -d
 - Railway 使用 `backend/` 作为根目录部署 Flask 后端
 - Vercel 使用 `frontend/` 作为项目根目录部署前端
 - 通过 `VITE_API_BASE_URL` 将前端指向 Railway 公开域名
+- Railway 后端配置文件位于 `backend/railway.json`
 
 完整步骤、环境变量、持久化卷挂载路径与验收检查见 [`docs/deploy-railway-vercel.md`](./docs/deploy-railway-vercel.md)。
 
