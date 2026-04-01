@@ -25,8 +25,7 @@ from app.config import Config
 def main():
     """主函数"""
     if not Config.DEBUG:
-        print("run.py 仅用于本地开发，请在生产环境使用 gunicorn 启动 wsgi:app")
-        sys.exit(1)
+        print("警告: 当前以非调试模式运行 run.py；生产环境请使用 gunicorn 启动 wsgi:app")
 
     # 验证配置
     errors = Config.validate()
