@@ -273,22 +273,22 @@
                       <div v-if="!showRawResult[log.timestamp]" class="result-structured">
                         <!-- Interview Agents - Special Display -->
                         <template v-if="log.details?.tool_name === 'interview_agents'">
-                          <InterviewDisplay :result="parseInterview(log.details.result)" :result-length="log.details?.result_length" />
+                          <InterviewDisplay :result="getStructuredToolResult(log)" :result-length="log.details?.result_length" />
                         </template>
                         
                         <!-- Insight Forge -->
                         <template v-else-if="log.details?.tool_name === 'insight_forge'">
-                          <InsightDisplay :result="parseInsightForge(log.details.result)" :result-length="log.details?.result_length" />
+                          <InsightDisplay :result="getStructuredToolResult(log)" :result-length="log.details?.result_length" />
                         </template>
                         
                         <!-- Panorama Search -->
                         <template v-else-if="log.details?.tool_name === 'panorama_search'">
-                          <PanoramaDisplay :result="parsePanorama(log.details.result)" :result-length="log.details?.result_length" />
+                          <PanoramaDisplay :result="getStructuredToolResult(log)" :result-length="log.details?.result_length" />
                         </template>
                         
                         <!-- Quick Search -->
                         <template v-else-if="log.details?.tool_name === 'quick_search'">
-                          <QuickSearchDisplay :result="parseQuickSearch(log.details.result)" :result-length="log.details?.result_length" />
+                          <QuickSearchDisplay :result="getStructuredToolResult(log)" :result-length="log.details?.result_length" />
                         </template>
                         
                         <!-- Default -->
@@ -956,6 +956,106 @@ const parseQuickSearch = (text) => {
   return result
 }
 
+const normalizeInsightPayload = (payload) => ({
+  query: payload?.query || '',
+  simulationRequirement: payload?.simulation_requirement || payload?.simulationRequirement || '',
+  stats: {
+    facts: payload?.stats?.facts ?? payload?.facts?.length ?? 0,
+    entities: payload?.stats?.entities ?? payload?.entities?.length ?? 0,
+    relationships: payload?.stats?.relationships ?? payload?.relations?.length ?? 0
+  },
+  subQueries: payload?.sub_queries || payload?.subQueries || [],
+  facts: payload?.facts || [],
+  entities: (payload?.entities || []).map(entity => ({
+    name: entity?.name || '',
+    type: entity?.type || '',
+    summary: entity?.summary || '',
+    relatedFactsCount: entity?.related_facts_count ?? entity?.relatedFactsCount ?? entity?.related_facts?.length ?? 0
+  })),
+  relations: (payload?.relations || []).map(relation => ({
+    source: relation?.source || '',
+    relation: relation?.relation || '',
+    target: relation?.target || ''
+  }))
+})
+
+const normalizePanoramaPayload = (payload) => ({
+  query: payload?.query || '',
+  stats: {
+    nodes: payload?.stats?.nodes ?? payload?.entities?.length ?? 0,
+    edges: payload?.stats?.edges ?? payload?.edges?.length ?? 0,
+    activeFacts: payload?.stats?.active_facts ?? payload?.stats?.activeFacts ?? payload?.active_facts?.length ?? payload?.activeFacts?.length ?? 0,
+    historicalFacts: payload?.stats?.historical_facts ?? payload?.stats?.historicalFacts ?? payload?.historical_facts?.length ?? payload?.historicalFacts?.length ?? 0
+  },
+  activeFacts: payload?.active_facts || payload?.activeFacts || [],
+  historicalFacts: payload?.historical_facts || payload?.historicalFacts || [],
+  entities: (payload?.entities || []).map(entity => ({
+    name: entity?.name || '',
+    type: entity?.type || ''
+  }))
+})
+
+const normalizeInterviewPayload = (payload) => {
+  const interviews = (payload?.interviews || []).map(interview => ({
+    name: interview?.agent_name || interview?.name || '',
+    title: interview?.agent_role || interview?.title || '',
+    role: interview?.agent_role || interview?.role || '',
+    bio: interview?.agent_bio || interview?.bio || '',
+    selectionReason: interview?.selection_reasoning || interview?.selectionReason || payload?.selection_reasoning || payload?.selectionReason || '',
+    question: interview?.question || '',
+    questions: interview?.questions || payload?.interview_questions || [],
+    twitterAnswer: interview?.twitter_response || interview?.twitterAnswer || '',
+    redditAnswer: interview?.reddit_response || interview?.redditAnswer || '',
+    quotes: interview?.key_quotes || interview?.quotes || []
+  }))
+
+  return {
+    topic: payload?.topic || payload?.interview_topic || '',
+    agentCount: payload?.interviewed_count && payload?.total_agents
+      ? `${payload.interviewed_count} / ${payload.total_agents}`
+      : '',
+    successCount: payload?.interviewed_count ?? interviews.length,
+    totalCount: payload?.total_agents ?? 0,
+    selectionReason: payload?.selection_reasoning || payload?.selectionReason || '',
+    interviews,
+    summary: payload?.summary || ''
+  }
+}
+
+const normalizeQuickSearchPayload = (payload) => ({
+  query: payload?.query || '',
+  count: payload?.count ?? payload?.facts?.length ?? 0,
+  facts: payload?.facts || [],
+  edges: (payload?.edges || []).map(edge => ({
+    source: edge?.source || '',
+    relation: edge?.relation || edge?.name || '',
+    target: edge?.target || ''
+  })),
+  nodes: (payload?.nodes || []).map(node => ({
+    name: node?.name || '',
+    type: node?.type || ''
+  }))
+})
+
+const getStructuredToolResult = (log) => {
+  const payload = log?.details?.result_payload
+  const toolName = log?.details?.tool_name
+
+  if (payload && log?.details?.schema_version >= 2) {
+    if (toolName === 'insight_forge') return normalizeInsightPayload(payload)
+    if (toolName === 'panorama_search') return normalizePanoramaPayload(payload)
+    if (toolName === 'interview_agents') return normalizeInterviewPayload(payload)
+    if (toolName === 'quick_search') return normalizeQuickSearchPayload(payload)
+  }
+
+  if (toolName === 'insight_forge') return parseInsightForge(log?.details?.result || '')
+  if (toolName === 'panorama_search') return parsePanorama(log?.details?.result || '')
+  if (toolName === 'interview_agents') return parseInterview(log?.details?.result || '')
+  if (toolName === 'quick_search') return parseQuickSearch(log?.details?.result || '')
+
+  return {}
+}
+
 // ========== Sub Components ==========
 
 // Insight Display Component - Enhanced with full data rendering (Interview-like style)
@@ -1327,7 +1427,14 @@ const InterviewDisplay = {
     const isPlaceholderText = (text) => {
       if (!text) return true
       const t = text.trim()
-      return t === '（该平台未获得回复）' || t === '(该平台未获得回复)' || t === '[无回复]'
+      return (
+        t === '（该平台未获得回复）' ||
+        t === '(该平台未获得回复)' ||
+        t === '[无回复]' ||
+        t === '(No reply from this platform.)' ||
+        t === '(No response from this platform.)' ||
+        t === '[No response]'
+      )
     }
 
     // 尝试按问题编号分割回答
@@ -1335,15 +1442,16 @@ const InterviewDisplay = {
       if (!answerText || questionCount <= 0) return [answerText]
       if (isPlaceholderText(answerText)) return ['']
 
-      // 支持两种编号格式：
-      // 1. "问题X：" 或 "问题X:" （中文格式，后端新格式）
-      // 2. "1. " 或 "\n1. " （数字+点，旧格式兼容）
+      // 支持三种编号格式：
+      // 1. "Question X:" （英文格式）
+      // 2. "问题X：" 或 "问题X:" （中文兼容）
+      // 3. "1. " 或 "\n1. " （旧格式兼容）
       let matches = []
       let match
 
-      // 优先尝试 "问题X：" 格式
-      const cnPattern = /(?:^|[\r\n]+)问题(\d+)[：:]\s*/g
-      while ((match = cnPattern.exec(answerText)) !== null) {
+      // 优先尝试 "Question X:" 格式
+      const enPattern = /(?:^|[\r\n]+)Question\s+(\d+)\s*:\s*/gi
+      while ((match = enPattern.exec(answerText)) !== null) {
         matches.push({
           num: parseInt(match[1]),
           index: match.index,
@@ -1351,7 +1459,18 @@ const InterviewDisplay = {
         })
       }
 
-      // 如果没匹配到，回退到 "数字." 格式
+      // 回退到 "问题X：" 格式
+      const cnPattern = /(?:^|[\r\n]+)问题(\d+)[：:]\s*/g
+      if (matches.length === 0) {
+        while ((match = cnPattern.exec(answerText)) !== null) {
+          matches.push({
+            num: parseInt(match[1]),
+            index: match.index,
+            fullMatch: match[0]
+          })
+        }
+      }
+
       if (matches.length === 0) {
         const numPattern = /(?:^|[\r\n]+)(\d+)\.\s+/g
         while ((match = numPattern.exec(answerText)) !== null) {
@@ -1366,6 +1485,7 @@ const InterviewDisplay = {
       // 如果没有找到编号或只找到一个，返回整体
       if (matches.length <= 1) {
         const cleaned = answerText
+          .replace(/^Question\s+\d+\s*:\s*/i, '')
           .replace(/^问题\d+[：:]\s*/, '')
           .replace(/^\d+\.\s+/, '')
           .trim()
