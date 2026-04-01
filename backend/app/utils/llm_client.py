@@ -6,7 +6,7 @@ LLM客户端封装
 import json
 import re
 from typing import Optional, Dict, Any, List
-from openai import OpenAI
+from openai import OpenAI, BadRequestError
 
 from ..config import Config
 
@@ -60,12 +60,61 @@ class LLMClient:
         
         if response_format:
             kwargs["response_format"] = response_format
-        
-        response = self.client.chat.completions.create(**kwargs)
+
+        response = self._create_chat_completion(kwargs)
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content
+
+    def _create_chat_completion(self, kwargs: Dict[str, Any]):
+        """
+        创建 Chat Completion 请求。
+
+        某些 OpenAI 模型不接受 `max_tokens`，而要求使用
+        `max_completion_tokens`。这里保留对旧兼容接口的支持，并在
+        遇到该类错误时自动回退重试。
+        """
+        try:
+            return self.client.chat.completions.create(**kwargs)
+        except BadRequestError as exc:
+            if not self._should_retry_with_max_completion_tokens(exc, kwargs):
+                raise
+
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["max_completion_tokens"] = retry_kwargs.pop("max_tokens")
+            return self.client.chat.completions.create(**retry_kwargs)
+
+    @staticmethod
+    def _should_retry_with_max_completion_tokens(
+        exc: BadRequestError,
+        kwargs: Dict[str, Any]
+    ) -> bool:
+        if "max_tokens" not in kwargs:
+            return False
+
+        message_parts = [str(exc)]
+
+        response = getattr(exc, "response", None)
+        if response is not None:
+            try:
+                message_parts.append(response.text)
+            except Exception:
+                pass
+
+        body = getattr(exc, "body", None)
+        if body is not None:
+            try:
+                message_parts.append(json.dumps(body, ensure_ascii=False))
+            except Exception:
+                message_parts.append(str(body))
+
+        message = " ".join(part for part in message_parts if part)
+        return (
+            "max_tokens" in message
+            and "max_completion_tokens" in message
+            and "unsupported_parameter" in message
+        )
     
     def chat_json(
         self,
@@ -100,4 +149,3 @@ class LLMClient:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
             raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
-
