@@ -1540,7 +1540,7 @@ Return JSON only."""
             
             # 检查API调用是否成功
             if not api_result.get("success", False):
-                error_msg = api_result.get("error", "Unknown error")
+                error_msg = self._normalize_interview_api_error(api_result.get("error", "Unknown error"))
                 logger.warning(f"Interview API reported failure: {error_msg}")
                 result.summary = (
                     f"Interview API call failed: {error_msg}. "
@@ -1664,6 +1664,17 @@ Return JSON only."""
             if match:
                 return match.group(1).replace('\\n', '\n').replace('\\"', '"')
         return response
+
+    @staticmethod
+    def _normalize_interview_api_error(error_msg: str) -> str:
+        """Convert common interview API error strings into stable English text."""
+        normalized = (error_msg or "").strip()
+        mappings = {
+            "没有成功的采访": "No interviews succeeded.",
+            "模拟环境未运行": "The simulation environment is not running.",
+            "采访超时": "The interview request timed out.",
+        }
+        return mappings.get(normalized, normalized or "Unknown error")
 
     def _load_agent_profiles(self, simulation_id: str) -> List[Dict[str, Any]]:
         """加载模拟的Agent人设文件"""

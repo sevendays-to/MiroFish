@@ -4,6 +4,7 @@ LLM客户端封装
 """
 
 import json
+import math
 import re
 from typing import Optional, Dict, Any, List
 from openai import OpenAI, BadRequestError
@@ -25,7 +26,7 @@ class LLMClient:
         self.model = model or Config.LLM_MODEL_NAME
         
         if not self.api_key:
-            raise ValueError("LLM_API_KEY 未配置")
+            raise ValueError("LLM_API_KEY is not configured")
         
         self.client = OpenAI(
             api_key=self.api_key,
@@ -53,7 +54,7 @@ class LLMClient:
         """
         kwargs = {
             "model": self.model,
-            "messages": messages,
+            "messages": self._sanitize_json_value(messages),
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
@@ -67,6 +68,35 @@ class LLMClient:
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         return content
 
+    @classmethod
+    def _sanitize_json_value(cls, value: Any) -> Any:
+        """Keep request payloads JSON-safe and strip problematic text characters."""
+        if isinstance(value, str):
+            return cls._sanitize_text(value)
+        if isinstance(value, dict):
+            return {
+                cls._sanitize_text(str(key)): cls._sanitize_json_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [cls._sanitize_json_value(item) for item in value]
+        if isinstance(value, tuple):
+            return [cls._sanitize_json_value(item) for item in value]
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        return value
+
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """
+        Remove control characters and lone surrogates that can poison JSON
+        serialization or trigger malformed-payload errors upstream.
+        """
+        text = text.replace("\x00", " ")
+        text = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", text)
+        text = re.sub(r"[\ud800-\udfff]", "", text)
+        return text
+
     def _create_chat_completion(self, kwargs: Dict[str, Any]):
         """
         创建 Chat Completion 请求。
@@ -78,12 +108,41 @@ class LLMClient:
         try:
             return self.client.chat.completions.create(**kwargs)
         except BadRequestError as exc:
+            if self._should_retry_with_sanitized_payload(exc):
+                retry_kwargs = self._sanitize_json_value(dict(kwargs))
+                return self.client.chat.completions.create(**retry_kwargs)
+
             if not self._should_retry_with_max_completion_tokens(exc, kwargs):
                 raise
 
             retry_kwargs = dict(kwargs)
             retry_kwargs["max_completion_tokens"] = retry_kwargs.pop("max_tokens")
             return self.client.chat.completions.create(**retry_kwargs)
+
+    @staticmethod
+    def _should_retry_with_sanitized_payload(exc: BadRequestError) -> bool:
+        message_parts = [str(exc)]
+
+        response = getattr(exc, "response", None)
+        if response is not None:
+            try:
+                message_parts.append(response.text)
+            except Exception:
+                pass
+
+        body = getattr(exc, "body", None)
+        if body is not None:
+            try:
+                message_parts.append(json.dumps(body, ensure_ascii=False))
+            except Exception:
+                message_parts.append(str(body))
+
+        message = " ".join(part for part in message_parts if part).lower()
+        return (
+            "parse the json body" in message
+            or "json payload" in message
+            or "not valid json" in message
+        )
 
     @staticmethod
     def _should_retry_with_max_completion_tokens(
@@ -148,4 +207,4 @@ class LLMClient:
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError:
-            raise ValueError(f"LLM返回的JSON格式无效: {cleaned_response}")
+            raise ValueError(f"LLM returned invalid JSON: {cleaned_response}")
