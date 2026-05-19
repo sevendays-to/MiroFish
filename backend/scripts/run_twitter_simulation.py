@@ -253,9 +253,7 @@ class IPCHandler:
             interviews: [{"agent_id": int, "prompt": str}, ...]
         """
         try:
-            # 构建动作字典
-            actions = {}
-            agent_prompts = {}  # 记录每个agent的prompt
+            results = {}
             
             for interview in interviews:
                 agent_id = interview.get("agent_id")
@@ -263,26 +261,19 @@ class IPCHandler:
                 
                 try:
                     agent = self.agent_graph.get_agent(agent_id)
-                    actions[agent] = ManualAction(
-                        action_type=ActionType.INTERVIEW,
-                        action_args={"prompt": prompt}
-                    )
-                    agent_prompts[agent_id] = prompt
+                    await self.env.step({
+                        agent: ManualAction(
+                            action_type=ActionType.INTERVIEW,
+                            action_args={"prompt": prompt}
+                        )
+                    })
+                    results[agent_id] = self._get_interview_result(agent_id)
                 except Exception as e:
-                    print(f"  警告: 无法获取Agent {agent_id}: {e}")
+                    print(f"  Interview失败: agent_id={agent_id}, error={e}")
             
-            if not actions:
+            if not results:
                 self.send_response(command_id, "failed", error="没有有效的Agent")
                 return False
-            
-            # 执行批量Interview
-            await self.env.step(actions)
-            
-            # 获取所有结果
-            results = {}
-            for agent_id in agent_prompts.keys():
-                result = self._get_interview_result(agent_id)
-                results[agent_id] = result
             
             self.send_response(command_id, "completed", result={
                 "interviews_count": len(results),

@@ -448,61 +448,46 @@ class ParallelIPCHandler:
                 reddit_interviews.extend(both_platforms_interviews)
         
         results = {}
-        
-        # 处理Twitter平台的采访
+
+        # 处理Twitter平台的采访。逐个执行，避免一次 env.step 塞入多个
+        # Agent 后让下游模型上下文膨胀到超过限制。
         if twitter_interviews and self.twitter_env:
-            try:
-                twitter_actions = {}
-                for interview in twitter_interviews:
-                    agent_id = interview.get("agent_id")
-                    prompt = interview.get("prompt", "")
-                    try:
-                        agent = self.twitter_agent_graph.get_agent(agent_id)
-                        twitter_actions[agent] = ManualAction(
+            for interview in twitter_interviews:
+                agent_id = interview.get("agent_id")
+                prompt = interview.get("prompt", "")
+                try:
+                    agent = self.twitter_agent_graph.get_agent(agent_id)
+                    await self.twitter_env.step({
+                        agent: ManualAction(
                             action_type=ActionType.INTERVIEW,
                             action_args={"prompt": prompt}
                         )
-                    except Exception as e:
-                        print(f"  警告: 无法获取Twitter Agent {agent_id}: {e}")
-                
-                if twitter_actions:
-                    await self.twitter_env.step(twitter_actions)
-                    
-                    for interview in twitter_interviews:
-                        agent_id = interview.get("agent_id")
-                        result = self._get_interview_result(agent_id, "twitter")
-                        result["platform"] = "twitter"
-                        results[f"twitter_{agent_id}"] = result
-            except Exception as e:
-                print(f"  Twitter批量Interview失败: {e}")
-        
-        # 处理Reddit平台的采访
+                    })
+                    result = self._get_interview_result(agent_id, "twitter")
+                    result["platform"] = "twitter"
+                    results[f"twitter_{agent_id}"] = result
+                except Exception as e:
+                    print(f"  Twitter Interview失败: agent_id={agent_id}, error={e}")
+
+        # 处理Reddit平台的采访（同样逐个执行）
         if reddit_interviews and self.reddit_env:
-            try:
-                reddit_actions = {}
-                for interview in reddit_interviews:
-                    agent_id = interview.get("agent_id")
-                    prompt = interview.get("prompt", "")
-                    try:
-                        agent = self.reddit_agent_graph.get_agent(agent_id)
-                        reddit_actions[agent] = ManualAction(
+            for interview in reddit_interviews:
+                agent_id = interview.get("agent_id")
+                prompt = interview.get("prompt", "")
+                try:
+                    agent = self.reddit_agent_graph.get_agent(agent_id)
+                    await self.reddit_env.step({
+                        agent: ManualAction(
                             action_type=ActionType.INTERVIEW,
                             action_args={"prompt": prompt}
                         )
-                    except Exception as e:
-                        print(f"  警告: 无法获取Reddit Agent {agent_id}: {e}")
-                
-                if reddit_actions:
-                    await self.reddit_env.step(reddit_actions)
-                    
-                    for interview in reddit_interviews:
-                        agent_id = interview.get("agent_id")
-                        result = self._get_interview_result(agent_id, "reddit")
-                        result["platform"] = "reddit"
-                        results[f"reddit_{agent_id}"] = result
-            except Exception as e:
-                print(f"  Reddit批量Interview失败: {e}")
-        
+                    })
+                    result = self._get_interview_result(agent_id, "reddit")
+                    result["platform"] = "reddit"
+                    results[f"reddit_{agent_id}"] = result
+                except Exception as e:
+                    print(f"  Reddit Interview失败: agent_id={agent_id}, error={e}")
+
         if results:
             self.send_response(command_id, "completed", result={
                 "interviews_count": len(results),

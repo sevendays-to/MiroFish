@@ -566,6 +566,18 @@ class ZepToolsService:
     # 重试配置
     MAX_RETRIES = 3
     RETRY_DELAY = 2.0
+
+    # Provider and context guardrails.
+    # Zep Cloud rejects graph search queries longer than 400 characters.
+    ZEP_SEARCH_QUERY_MAX_CHARS = 400
+    SELECTION_BACKGROUND_MAX_CHARS = 2500
+    QUESTION_BACKGROUND_MAX_CHARS = 1200
+    INTERVIEW_REQUIREMENT_MAX_CHARS = 1200
+    INTERVIEW_QUESTION_MAX_CHARS = 300
+    INTERVIEW_PROMPT_MAX_CHARS = 1800
+    INTERVIEW_SUMMARY_RESPONSE_MAX_CHARS = 500
+    MAX_AGENT_SUMMARIES_FOR_SELECTION = 120
+    SAFE_MAX_INTERVIEW_AGENTS = 3
     
     def __init__(self, api_key: Optional[str] = None, llm_client: Optional[LLMClient] = None):
         self.api_key = api_key or Config.ZEP_API_KEY
@@ -583,6 +595,47 @@ class ZepToolsService:
         if self._llm_client is None:
             self._llm_client = LLMClient()
         return self._llm_client
+
+    @staticmethod
+    def _truncate_text(text: Any, max_chars: int, suffix: str = "...") -> str:
+        """Return a compact string that stays below a provider/API character limit."""
+        if text is None:
+            return ""
+        text = str(text)
+        if max_chars <= 0 or len(text) <= max_chars:
+            return text
+        suffix_len = min(len(suffix), max_chars)
+        return text[: max_chars - suffix_len].rstrip() + suffix[:suffix_len]
+
+    @classmethod
+    def _normalize_zep_query(cls, query: Any) -> str:
+        """Normalize graph-search queries before sending them to Zep."""
+        normalized = " ".join(str(query or "").split())
+        if len(normalized) > cls.ZEP_SEARCH_QUERY_MAX_CHARS:
+            truncated = cls._truncate_text(normalized, cls.ZEP_SEARCH_QUERY_MAX_CHARS)
+            logger.info(
+                "Truncated Zep search query: %s -> %s chars",
+                len(normalized),
+                len(truncated),
+            )
+            return truncated
+        return normalized
+
+    @classmethod
+    def _bounded_json(cls, value: Any, max_chars: int) -> str:
+        """Serialize JSON compactly and cap its size for LLM prompts."""
+        payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        return cls._truncate_text(payload, max_chars)
+
+    @staticmethod
+    def _looks_like_context_length_error(error_msg: Any) -> bool:
+        text = str(error_msg or "").lower()
+        return (
+            "context_length_exceeded" in text
+            or "input tokens exceed" in text
+            or "maximum context length" in text
+            or "too many tokens" in text
+        )
     
     def _call_with_retry(self, func, operation_name: str, max_retries: int = None):
         """带重试机制的API调用"""
@@ -629,6 +682,7 @@ class ZepToolsService:
         Returns:
             SearchResult: 搜索结果
         """
+        query = self._normalize_zep_query(query)
         logger.info(f"Graph search: graph_id={graph_id}, query={query[:50]}...")
         
         # 尝试使用Zep Cloud Search API
@@ -1435,7 +1489,7 @@ Return JSON only."""
         1. 自动读取人设文件，了解所有模拟Agent
         2. 使用LLM分析采访需求，智能选择最相关的Agent
         3. 使用LLM生成采访问题
-        4. 调用 /api/simulation/interview/batch 接口进行真实采访（双平台同时采访）
+        4. 逐个调用真实采访API，避免批量上下文过大
         5. 整合所有采访结果，生成采访报告
         
         【重要】此功能需要模拟环境处于运行状态（OASIS环境未关闭）
@@ -1475,12 +1529,20 @@ Return JSON only."""
         result.total_agents = len(profiles)
         logger.info(f"Loaded {len(profiles)} agent profiles")
         
+        safe_max_agents = max(1, min(max_agents, self.SAFE_MAX_INTERVIEW_AGENTS))
+        if safe_max_agents < max_agents:
+            logger.info(
+                "Capped interview agent count for context safety: requested=%s, using=%s",
+                max_agents,
+                safe_max_agents,
+            )
+
         # Step 2: 使用LLM选择要采访的Agent（返回agent_id列表）
         selected_agents, selected_indices, selection_reasoning = self._select_agents_for_interview(
             profiles=profiles,
             interview_requirement=interview_requirement,
             simulation_requirement=simulation_requirement,
-            max_agents=max_agents
+            max_agents=safe_max_agents
         )
         
         result.selected_agents = selected_agents
@@ -1495,64 +1557,68 @@ Return JSON only."""
                 selected_agents=selected_agents
             )
             logger.info(f"Generated {len(result.interview_questions)} interview questions")
-        
-        # 将问题合并为一个采访prompt
+
+        result.interview_questions = [
+            self._truncate_text(q, self.INTERVIEW_QUESTION_MAX_CHARS)
+            for q in result.interview_questions[:3]
+            if str(q).strip()
+        ]
+        if not result.interview_questions:
+            result.interview_questions = [
+                self._truncate_text(
+                    f"What is your perspective on {interview_requirement}?",
+                    self.INTERVIEW_QUESTION_MAX_CHARS,
+                )
+            ]
+
         combined_prompt = "\n".join([f"{i+1}. {q}" for i, q in enumerate(result.interview_questions)])
+        optimized_prompt = self._build_interview_prompt(result.interview_questions)
         
-        # 添加优化前缀，约束Agent回复格式
-        INTERVIEW_PROMPT_PREFIX = (
-            "You are being interviewed. Answer the following questions in character using your profile, memories, and prior actions.\n"
-            "Reply requirements:\n"
-            "1. Answer directly in natural language and do not call any tools.\n"
-            "2. Do not return JSON or tool-call syntax.\n"
-            "3. Do not use Markdown headings.\n"
-            "4. Answer each question in order, and begin each answer with \"Question X:\" where X is the question number.\n"
-            "5. Separate answers with a blank line.\n"
-            "6. Each answer should contain real substance and be at least 2-3 sentences.\n\n"
-        )
-        optimized_prompt = f"{INTERVIEW_PROMPT_PREFIX}{combined_prompt}"
-        
-        # Step 4: 调用真实的采访API（不指定platform，默认双平台同时采访）
+        # Step 4: 调用真实的采访API（按 agent/platform 顺序执行）
         try:
-            # 构建批量采访列表（不指定platform，双平台采访）
-            interviews_request = []
-            for agent_idx in selected_indices:
-                interviews_request.append({
-                    "agent_id": agent_idx,
-                    "prompt": optimized_prompt  # 使用优化后的prompt
-                    # 不指定platform，API会在twitter和reddit两个平台都采访
-                })
-            
-            logger.info(f"Calling batch interview API across both platforms for {len(interviews_request)} agents")
-            
-            # 调用 SimulationRunner 的批量采访方法（不传platform，双平台采访）
-            api_result = SimulationRunner.interview_agents_batch(
-                simulation_id=simulation_id,
-                interviews=interviews_request,
-                platform=None,  # 不指定platform，双平台采访
-                timeout=180.0   # 双平台需要更长超时
-            )
-            
+            # Call one agent/platform at a time. OASIS/Camel builds context inside
+            # env.step(); batching multiple agents and platforms can push the
+            # model request beyond its context window.
+            results_dict = {}
+            errors = []
             logger.info(
-                f"Interview API returned {api_result.get('interviews_count', 0)} results, "
-                f"success={api_result.get('success')}"
+                "Calling sequential interviews for %s agents across available platforms",
+                len(selected_indices),
             )
-            
-            # 检查API调用是否成功
-            if not api_result.get("success", False):
-                error_msg = self._normalize_interview_api_error(api_result.get("error", "Unknown error"))
-                logger.warning(f"Interview API reported failure: {error_msg}")
+
+            for agent_idx in selected_indices:
+                for platform_name in ("twitter", "reddit"):
+                    single_result = self._call_interview_with_fallback(
+                        simulation_runner=SimulationRunner,
+                        simulation_id=simulation_id,
+                        agent_id=agent_idx,
+                        prompt=optimized_prompt,
+                        fallback_questions=result.interview_questions,
+                        platform=platform_name,
+                    )
+                    key = f"{platform_name}_{agent_idx}"
+                    if single_result.get("success"):
+                        results_dict[key] = single_result.get("result", {})
+                    else:
+                        error_msg = self._normalize_interview_api_error(
+                            single_result.get("error", "Unknown error")
+                        )
+                        errors.append(f"{key}: {error_msg}")
+                        results_dict[key] = {
+                            "agent_id": agent_idx,
+                            "response": "",
+                            "platform": platform_name,
+                            "error": error_msg,
+                        }
+
+            if not any((item.get("response") for item in results_dict.values())):
                 result.summary = (
-                    f"Interview API call failed: {error_msg}. "
-                    "Check whether the OASIS simulation environment is running."
+                    "Interview API call failed for all requested agents/platforms: "
+                    + "; ".join(errors[:4])
                 )
                 return result
-            
+
             # Step 5: 解析API返回结果，构建AgentInterview对象
-            # 双平台模式返回格式: {"twitter_0": {...}, "reddit_0": {...}, "twitter_1": {...}, ...}
-            api_data = api_result.get("result", {})
-            results_dict = api_data.get("results", {}) if isinstance(api_data, dict) else {}
-            
             for i, agent_idx in enumerate(selected_indices):
                 agent = selected_agents[i]
                 agent_name = agent.get("realname", agent.get("username", f"Agent_{agent_idx}"))
@@ -1643,6 +1709,81 @@ Return JSON only."""
         
         logger.info(f"InterviewAgents complete: interviewed {result.interviewed_count} agents across both platforms")
         return result
+
+    def _build_interview_prompt(self, questions: List[str], max_questions: int = 3) -> str:
+        """Build a short interview prompt to avoid inflating the agent model context."""
+        compact_questions = [
+            self._truncate_text(question, self.INTERVIEW_QUESTION_MAX_CHARS)
+            for question in questions[:max_questions]
+            if str(question).strip()
+        ]
+        numbered_questions = "\n".join(
+            f"{idx}. {question}" for idx, question in enumerate(compact_questions, 1)
+        )
+        prompt = (
+            "You are being interviewed. Answer in character using your profile, memories, and prior actions.\n"
+            "Do not call tools. Do not return JSON. Answer each numbered question in 2-3 concise sentences.\n\n"
+            f"{numbered_questions}"
+        )
+        return self._truncate_text(prompt, self.INTERVIEW_PROMPT_MAX_CHARS)
+
+    def _build_minimal_interview_prompt(self, questions: List[str]) -> str:
+        """Fallback prompt used after context-length failures."""
+        question = questions[0] if questions else "What is your perspective?"
+        question = self._truncate_text(question, self.INTERVIEW_QUESTION_MAX_CHARS)
+        return (
+            "Answer in character in 2 concise sentences. Do not call tools or return JSON.\n\n"
+            f"Question: {question}"
+        )
+
+    def _call_interview_with_fallback(
+        self,
+        simulation_runner,
+        simulation_id: str,
+        agent_id: int,
+        prompt: str,
+        fallback_questions: List[str],
+        platform: str,
+    ) -> Dict[str, Any]:
+        """Run one interview and retry with a minimal prompt on context blow-ups."""
+        try:
+            result = simulation_runner.interview_agent(
+                simulation_id=simulation_id,
+                agent_id=agent_id,
+                prompt=prompt,
+                platform=platform,
+                timeout=120.0,
+            )
+        except TimeoutError as exc:
+            result = {"success": False, "error": str(exc)}
+        except Exception as exc:
+            result = {"success": False, "error": str(exc)}
+
+        if result.get("success"):
+            return result
+
+        error_msg = result.get("error", "")
+        if not self._looks_like_context_length_error(error_msg):
+            return result
+
+        logger.warning(
+            "Interview context limit hit; retrying minimal prompt: simulation=%s agent=%s platform=%s error=%s",
+            simulation_id,
+            agent_id,
+            platform,
+            self._truncate_text(error_msg, 300),
+        )
+
+        try:
+            return simulation_runner.interview_agent(
+                simulation_id=simulation_id,
+                agent_id=agent_id,
+                prompt=self._build_minimal_interview_prompt(fallback_questions),
+                platform=platform,
+                timeout=120.0,
+            )
+        except Exception as exc:
+            return {"success": False, "error": str(exc)}
     
     @staticmethod
     def _clean_tool_call_response(response: str) -> str:
@@ -1741,7 +1882,7 @@ Return JSON only."""
         
         # 构建Agent摘要列表
         agent_summaries = []
-        for i, profile in enumerate(profiles):
+        for i, profile in enumerate(profiles[:self.MAX_AGENT_SUMMARIES_FOR_SELECTION]):
             summary = {
                 "index": i,
                 "name": profile.get("realname", profile.get("username", f"Agent_{i}")),
@@ -1766,13 +1907,13 @@ Return JSON only:
 }"""
 
         user_prompt = f"""Interview requirement:
-{interview_requirement}
+{self._truncate_text(interview_requirement, self.INTERVIEW_REQUIREMENT_MAX_CHARS)}
 
 Simulation background:
-{simulation_requirement if simulation_requirement else "Not provided"}
+{self._truncate_text(simulation_requirement, self.SELECTION_BACKGROUND_MAX_CHARS) if simulation_requirement else "Not provided"}
 
-Available agents ({len(agent_summaries)} total):
-{json.dumps(agent_summaries, ensure_ascii=False, indent=2)}
+Available agents ({len(agent_summaries)} shown of {len(profiles)} total):
+{self._bounded_json(agent_summaries, 18000)}
 
 Select up to {max_agents} agents and explain why."""
 
@@ -1812,9 +1953,9 @@ Select up to {max_agents} agents and explain why."""
     ) -> List[str]:
         """使用LLM生成采访问题"""
         
-        agent_roles = [a.get("profession", "Unknown") for a in selected_agents]
+        agent_roles = [self._truncate_text(a.get("profession", "Unknown"), 80) for a in selected_agents]
         
-        system_prompt = """You are a skilled reporter. Generate 3-5 strong interview questions for a simulation-based reporting task.
+        system_prompt = """You are a skilled reporter. Generate 2-3 strong interview questions for a simulation-based reporting task.
 
 Requirements:
 1. Questions should be open-ended and invite detailed answers.
@@ -1824,13 +1965,13 @@ Requirements:
 5. Keep each question concise.
 6. Return JSON only: {"questions": ["question 1", "question 2", ...]}"""
 
-        user_prompt = f"""Interview requirement: {interview_requirement}
+        user_prompt = f"""Interview requirement: {self._truncate_text(interview_requirement, self.INTERVIEW_REQUIREMENT_MAX_CHARS)}
 
-Simulation background: {simulation_requirement if simulation_requirement else "Not provided"}
+Simulation background: {self._truncate_text(simulation_requirement, self.QUESTION_BACKGROUND_MAX_CHARS) if simulation_requirement else "Not provided"}
 
 Roles being interviewed: {', '.join(agent_roles)}
 
-Generate 3-5 interview questions."""
+Generate 2-3 interview questions."""
 
         try:
             response = self.llm.chat_json(
@@ -1841,14 +1982,23 @@ Generate 3-5 interview questions."""
                 temperature=0.5
             )
             
-            return response.get("questions", [f"What is your view on {interview_requirement}?"])
+            questions = response.get("questions", [f"What is your view on {interview_requirement}?"])
+            return [
+                self._truncate_text(question, self.INTERVIEW_QUESTION_MAX_CHARS)
+                for question in questions[:3]
+                if str(question).strip()
+            ]
             
         except Exception as e:
             logger.warning(f"Failed to generate interview questions: {e}")
-            return [
+            fallback_questions = [
                 f"What is your perspective on {interview_requirement}?",
                 "How does this affect you or the group you represent?",
                 "What should happen next to address or improve the situation?",
+            ]
+            return [
+                self._truncate_text(question, self.INTERVIEW_QUESTION_MAX_CHARS)
+                for question in fallback_questions
             ]
     
     def _generate_interview_summary(
@@ -1864,7 +2014,10 @@ Generate 3-5 interview questions."""
         # 收集所有采访内容
         interview_texts = []
         for interview in interviews:
-            interview_texts.append(f"[{interview.agent_name} ({interview.agent_role})]\n{interview.response[:500]}")
+            interview_texts.append(
+                f"[{interview.agent_name} ({interview.agent_role})]\n"
+                f"{self._truncate_text(interview.response, self.INTERVIEW_SUMMARY_RESPONSE_MAX_CHARS)}"
+            )
         
         system_prompt = """You are a newsroom editor. Write a concise interview summary based on multiple simulated interviews.
 
