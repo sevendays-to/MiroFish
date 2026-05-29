@@ -6,7 +6,9 @@
 import os
 import traceback
 import threading
+import time
 from flask import request, jsonify
+from openai import APIStatusError, AuthenticationError, BadRequestError, RateLimitError
 
 from . import graph_bp
 from ..config import Config
@@ -28,6 +30,65 @@ def allowed_file(filename: str) -> bool:
         return False
     ext = os.path.splitext(filename)[1].lower().lstrip('.')
     return ext in Config.ALLOWED_EXTENSIONS
+
+
+def _openai_error_response(error: APIStatusError):
+    """Convert upstream LLM failures into useful API responses."""
+    status_code = getattr(error, "status_code", None) or 502
+    message = str(error)
+
+    if isinstance(error, RateLimitError):
+        client_status = 429
+        if "insufficient_quota" in message:
+            client_message = (
+                "LLM quota exceeded. Check the configured OpenAI account billing "
+                "or switch LLM_API_KEY/LLM_MODEL_NAME in .env."
+            )
+        else:
+            client_message = "LLM rate limit reached. Please retry later."
+    elif isinstance(error, AuthenticationError):
+        client_status = 502
+        client_message = "LLM authentication failed. Check LLM_API_KEY in .env."
+    elif isinstance(error, BadRequestError):
+        client_status = 502
+        client_message = f"LLM request was rejected: {message}"
+    else:
+        client_status = status_code if 400 <= status_code < 500 else 502
+        client_message = f"LLM provider error: {message}"
+
+    logger.exception("LLM provider error during ontology generation")
+    return jsonify({
+        "success": False,
+        "error": client_message
+    }), client_status
+
+
+def _is_insufficient_quota_error(error: APIStatusError) -> bool:
+    return "insufficient_quota" in str(error).lower()
+
+
+def _generate_ontology_with_quota_retry(generator: OntologyGenerator, **kwargs):
+    """
+    Auto-recharge can take a short time to propagate. Keep the uploaded
+    documents in the same request and retry only this specific quota case.
+    """
+    retry_delays = (10, 20, 30)
+
+    for attempt, delay in enumerate((*retry_delays, None), start=1):
+        try:
+            return generator.generate(**kwargs)
+        except RateLimitError as error:
+            if delay is None or not _is_insufficient_quota_error(error):
+                raise
+
+            logger.warning(
+                "LLM quota temporarily unavailable during ontology generation; "
+                "retrying in %s seconds (attempt %s/%s)",
+                delay,
+                attempt + 1,
+                len(retry_delays) + 1
+            )
+            time.sleep(delay)
 
 
 # ============== 项目管理接口 ==============
@@ -214,7 +275,8 @@ def generate_ontology():
         # 生成本体
         logger.info("调用 LLM 生成本体定义...")
         generator = OntologyGenerator()
-        ontology = generator.generate(
+        ontology = _generate_ontology_with_quota_retry(
+            generator,
             document_texts=document_texts,
             simulation_requirement=simulation_requirement,
             additional_context=additional_context if additional_context else None
@@ -246,7 +308,10 @@ def generate_ontology():
             }
         })
         
+    except APIStatusError as e:
+        return _openai_error_response(e)
     except Exception as e:
+        logger.exception("Unhandled error during ontology generation")
         return jsonify({
             "success": False,
             "error": str(e),

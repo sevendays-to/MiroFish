@@ -83,6 +83,8 @@ import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 
+const ONTOLOGY_PROGRESS_MESSAGE = 'Uploading and analyzing docs. If OpenAI auto-recharge is still propagating, MiroFish will briefly keep this run alive and retry before failing.'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -197,8 +199,9 @@ const handleNewProject = async () => {
   try {
     loading.value = true
     currentPhase.value = 0
-    ontologyProgress.value = { message: 'Uploading and analyzing docs...' }
+    ontologyProgress.value = { message: ONTOLOGY_PROGRESS_MESSAGE }
     addLog('Starting ontology generation: Uploading files...')
+    addLog('If OpenAI auto-recharge is still propagating, this run will briefly stay alive and retry.')
     
     const formData = new FormData()
     pending.files.forEach(f => formData.append('files', f))

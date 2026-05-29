@@ -418,6 +418,8 @@ import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData }
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import * as d3 from 'd3'
 
+const ONTOLOGY_PROGRESS_MESSAGE = 'Uploading files and analyzing documents. If OpenAI auto-recharge is still propagating, MiroFish will briefly keep this run alive and retry before failing.'
+
 const route = useRoute()
 const router = useRouter()
 
@@ -577,7 +579,7 @@ const handleNewProject = async () => {
   try {
     loading.value = true
     currentPhase.value = 0 // 本体生成阶段
-    ontologyProgress.value = { message: 'Uploading files and analyzing documents...' }
+    ontologyProgress.value = { message: ONTOLOGY_PROGRESS_MESSAGE }
     
     // 构建 FormData
     const formDataObj = new FormData()
