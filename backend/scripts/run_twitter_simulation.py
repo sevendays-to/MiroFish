@@ -116,7 +116,7 @@ def setup_oasis_logging(log_dir: str):
 
 
 try:
-    from camel.models import ModelFactory
+    from responses_model import create_simulation_model
     from camel.types import ModelPlatformType
     import oasis
     from oasis import (
@@ -445,7 +445,7 @@ class TwitterSimulationRunner:
         
         print(f"LLM配置: model={llm_model}, base_url={llm_base_url[:40] if llm_base_url else '默认'}...")
         
-        return ModelFactory.create(
+        return create_simulation_model(
             model_platform=ModelPlatformType.OPENAI,
             model_type=llm_model,
         )

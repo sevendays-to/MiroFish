@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from openai import OpenAI, BadRequestError
 
 from ..config import Config
+from responses_model import uses_responses, responses_request, as_chat_completion
 
 
 class LLMClient:
@@ -105,6 +106,10 @@ class LLMClient:
         `max_completion_tokens`。这里保留对旧兼容接口的支持，并在
         遇到该类错误时自动回退重试。
         """
+        if uses_responses(self.model):
+            return as_chat_completion(self.client.responses.create(**responses_request(
+                self.model, kwargs['messages'], max_tokens=kwargs.get('max_tokens'),
+                response_format=kwargs.get('response_format'))))
         try:
             return self.client.chat.completions.create(**kwargs)
         except BadRequestError as exc:
