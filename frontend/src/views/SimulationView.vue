@@ -21,6 +21,7 @@
       </div>
 
       <div class="header-right">
+        <ThemeToggle />
         <div class="workflow-step">
           <span class="step-num">Step 2/5</span>
           <span class="step-name">Environment Setup</span>
@@ -64,6 +65,7 @@
 </template>
 
 <script setup>
+import ThemeToggle from '../components/ThemeToggle.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import GraphPanel from '../components/GraphPanel.vue'
@@ -302,7 +304,7 @@ onMounted(async () => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: var(--surface);
   overflow: hidden;
   font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
 }
@@ -310,12 +312,12 @@ onMounted(async () => {
 /* Header */
 .app-header {
   height: 60px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #FFF;
+  background: var(--surface);
   z-index: 100;
   position: relative;
 }
@@ -336,7 +338,7 @@ onMounted(async () => {
 
 .view-switcher {
   display: flex;
-  background: #F5F5F5;
+  background: var(--surface-muted);
   padding: 4px;
   border-radius: 6px;
   gap: 4px;
@@ -348,15 +350,15 @@ onMounted(async () => {
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--text-muted);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .switch-btn.active {
-  background: #FFF;
-  color: #000;
+  background: var(--surface);
+  color: var(--text);
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
@@ -376,18 +378,18 @@ onMounted(async () => {
 .step-num {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #999;
+  color: var(--text-faint);
 }
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: var(--text);
 }
 
 .step-divider {
   width: 1px;
   height: 14px;
-  background-color: #E0E0E0;
+  background-color: var(--surface-muted);
 }
 
 .status-indicator {
@@ -395,7 +397,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: #666;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -403,7 +405,7 @@ onMounted(async () => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #CCC;
+  background: var(--surface-hover);
 }
 
 .status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
@@ -428,6 +430,6 @@ onMounted(async () => {
 }
 
 .panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  border-right: 1px solid var(--border);
 }
 </style>

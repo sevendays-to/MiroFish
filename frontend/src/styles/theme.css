@@ -1,0 +1,122 @@
+:root {
+  color-scheme: light;
+  --page: #ffffff;
+  --surface: #ffffff;
+  --surface-soft: #fafafa;
+  --surface-muted: #f5f5f5;
+  --surface-hover: #eeeeee;
+  --text: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-faint: #767e8c;
+  --border: #e5e7eb;
+  --border-strong: #cbd0d8;
+  --solid: #111827;
+  --on-solid: #ffffff;
+  --accent: #ff5722;
+  --on-accent: #ffffff;
+  --surface-rgb: 255, 255, 255;
+  --ink-rgb: 0, 0, 0;
+  --blue-text: #2563eb;
+  --blue-soft: #eff6ff;
+  --blue-border: #93c5fd;
+  --green-text: #15803d;
+  --green-soft: #ecfdf5;
+  --green-border: #a7f3d0;
+  --orange-text: #c2410c;
+  --orange-soft: #fff7ed;
+  --orange-border: #fdba74;
+  --yellow-text: #a16207;
+  --yellow-soft: #fef3c7;
+  --yellow-border: #fcd34d;
+  --red-text: #dc2626;
+  --red-soft: #fee2e2;
+  --red-border: #fca5a5;
+  --purple-text: #7c3aed;
+  --purple-soft: #f5f3ff;
+  --purple-border: #c4b5fd;
+  --pink-text: #be185d;
+  --pink-soft: #fdf2f8;
+  --pink-border: #f9a8d4;
+  --cyan-text: #0e7490;
+  --cyan-soft: #ecfeff;
+  --cyan-border: #67e8f9;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --font-cn: 'Noto Sans SC', system-ui, sans-serif;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #111315;
+  --surface: #191c20;
+  --surface-soft: #16191c;
+  --surface-muted: #22262b;
+  --surface-hover: #2c3138;
+  --text: #f0f2f5;
+  --text-secondary: #d0d5dd;
+  --text-muted: #a4adba;
+  --text-faint: #929dab;
+  --border: #30363e;
+  --border-strong: #48515d;
+  --solid: #e8ecf1;
+  --on-solid: #14171b;
+  --accent: #ff7547;
+  --on-accent: #111315;
+  --surface-rgb: 25, 28, 32;
+  --ink-rgb: 220, 228, 240;
+  --blue-text: #93c5fd;
+  --blue-soft: #192d46;
+  --blue-border: #365879;
+  --green-text: #86efac;
+  --green-soft: #18352a;
+  --green-border: #31654a;
+  --orange-text: #fdba74;
+  --orange-soft: #3d291d;
+  --orange-border: #805334;
+  --yellow-text: #fcd34d;
+  --yellow-soft: #352e18;
+  --yellow-border: #74602b;
+  --red-text: #fca5a5;
+  --red-soft: #3a2026;
+  --red-border: #7c3d48;
+  --purple-text: #c4b5fd;
+  --purple-soft: #2b2340;
+  --purple-border: #58477d;
+  --pink-text: #f9a8d4;
+  --pink-soft: #382335;
+  --pink-border: #794462;
+  --cyan-text: #67e8f9;
+  --cyan-soft: #193039;
+  --cyan-border: #356776;
+}
+html, body, #app { background: var(--page); color: var(--text); }
+input, textarea, select { color: var(--text); font: inherit; }
+textarea, select { background-color: var(--surface); }
+input::placeholder, textarea::placeholder { color: var(--text-faint); opacity: 1; }
+:where(button, a, input, textarea, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+::selection { background: var(--orange-soft); color: var(--text); }
+/* JPEG branding has a white canvas. Blend it into each theme without changing the asset. */
+.hero-logo { mix-blend-mode: multiply; }
+[data-theme="dark"] .hero-logo { filter: invert(1) hue-rotate(180deg); mix-blend-mode: screen; }
+#app .home-container .navbar { background: #111315; color: #ffffff; border-bottom: 1px solid #30363e; }
+#app .home-container .github-link { color: #ffffff; }
+#app .home-container .nav-links { gap: 20px; }
+@media (max-width: 1100px) {
+  #app .app-header .workflow-step, .app-header .step-divider { display: none; }
+}
+@media (max-width: 640px) {
+  #app .home-container .navbar { padding: 0 16px; }
+  #app .home-container .nav-links { gap: 10px; }
+  #app .home-container .github-link { font-size: 11px; }
+  #app .home-container .main-content { padding: 32px 18px; }
+  #app .home-container .main-title { font-size: 2.6rem; letter-spacing: -1px; }
+  #app .home-container .tag-row { flex-wrap: wrap; }
+  #app .home-container .orange-tag { letter-spacing: 0; font-size: 10px; }
+  #app .home-container .metrics-row { flex-wrap: wrap; }
+  #app .home-container .metric-card { flex: 1; padding: 16px; min-width: 130px; }
+  #app .home-container .console-header { flex-wrap: wrap; gap: 8px; }
+  #app .app-header { min-height: 96px; height: auto; flex-wrap: wrap; padding: 10px 16px; gap: 10px; flex-shrink: 0; }
+  #app .app-header .header-center { position: static; transform: none; order: 3; width: 100%; display: flex; justify-content: center; }
+  #app .app-header .header-right { gap: 10px; }
+  #app .app-header .status-indicator { font-size: 10px; }
+}

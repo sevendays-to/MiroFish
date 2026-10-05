@@ -18,8 +18,8 @@
   font-family: 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #000000;
-  background-color: #ffffff;
+  color: var(--text);
+  background-color: var(--surface);
 }
 
 /* 滚动条样式 */
@@ -29,15 +29,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--surface-muted);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #000000;
+  background: var(--solid);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+  background: var(--solid);
 }
 
 /* 全局按钮样式 */
