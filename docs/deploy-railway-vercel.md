@@ -11,7 +11,7 @@ This setup keeps the backend on Railway and the frontend on Vercel:
 1. Create a Railway service from this repository.
 2. Set the Railway root directory to `/backend`.
 3. Railway will read [`backend/railway.json`](../backend/railway.json), which forces Railpack and starts Gunicorn with `wsgi:app`.
-4. Add a persistent volume mounted at `/app/backend/uploads`.
+4. Add a persistent volume mounted at `/app/uploads` (Railpack runs the backend from `/app`). Back up existing uploads before attaching the volume: a new mount does not migrate files from the previous container.
 5. Set these Railway variables:
 
 ```env
@@ -59,4 +59,4 @@ After both deploys are live:
 2. Open the Vercel frontend and verify there are no browser CORS errors.
 3. Refresh a non-root frontend route to confirm the SPA fallback works.
 4. Run a minimal workflow: upload a document, build a graph, create a simulation, start it, and generate a report.
-5. Restart the Railway service and confirm data under `/app/backend/uploads` persists.
+5. Redeploy the Railway service and confirm projects and simulations under `/app/uploads` persist.

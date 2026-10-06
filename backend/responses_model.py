@@ -30,7 +30,8 @@ def responses_request(model, messages, tools=None, max_tokens=None, response_for
     request = dict(model=str(model), input=items, reasoning={'effort': 'medium'},
                    store=False, include=['reasoning.encrypted_content'])
     if max_tokens:
-        request['max_output_tokens'] = max_tokens
+        # Responses counts reasoning tokens too; legacy text limits need headroom.
+        request['max_output_tokens'] = max(16384, max_tokens)
     if tools:
         request['tools'] = [dict(type='function', **dict(tool['function'], strict=False))
                             for tool in tools]
@@ -48,7 +49,9 @@ def responses_request(model, messages, tools=None, max_tokens=None, response_for
 
 def as_chat_completion(response, reasoning_items=None):
     if response.status != 'completed':
-        raise RuntimeError(f'Responses API did not complete: {response.status}')
+        details = getattr(response, 'incomplete_details', None)
+        reason = getattr(details, 'reason', None) or getattr(response, 'error', None)
+        raise RuntimeError(f'Responses API did not complete: {response.status} ({reason or "unknown reason"})')
     calls = []
     reasoning = [item.model_dump(exclude_none=True) for item in response.output
                  if item.type == 'reasoning']

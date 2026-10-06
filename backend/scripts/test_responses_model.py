@@ -56,6 +56,7 @@ async def check(live=False):
         assert len(requests) == 2
         first, second = [entry.kwargs for entry in requests]
         assert first['reasoning'] == {'effort': 'medium'}
+        assert first['max_output_tokens'] == 16384
         assert first['tools'][0]['name'] == 'create_post'
         assert first['tools'][0]['strict'] is False
         assert 'temperature' not in first and 'max_tokens' not in first
@@ -65,14 +66,31 @@ async def check(live=False):
         req = responses_request('gpt-6.1-sol', [{'role': 'user', 'content': 'Return JSON'}],
                                 response_format={'type': 'json_object'})
         assert req['text']['format'] == {'type': 'json_object'}
+        assert 'max_output_tokens' not in req
+        assert responses_request('gpt-6.1-sol', [], max_tokens=32768)['max_output_tokens'] == 32768
         try:
-            as_chat_completion(SimpleNamespace(status='incomplete'))
-        except RuntimeError:
-            pass
+            as_chat_completion(SimpleNamespace(status='incomplete',
+                incomplete_details=SimpleNamespace(reason='max_output_tokens')))
+        except RuntimeError as error:
+            assert 'max_output_tokens' in str(error)
         else:
             raise AssertionError('Incomplete responses must fail')
         legacy = create_simulation_model(ModelPlatformType.OPENAI, 'gpt-4o-mini', api_key='test')
         assert type(legacy).__name__ == 'OpenAIModel'
+    else:
+        from app.services.ontology_generator import OntologyGenerator
+        from app.utils.llm_client import LLMClient
+        client = LLMClient(api_key=cfg['LLM_API_KEY'], base_url=cfg.get('LLM_BASE_URL'),
+                           model='gpt-6.1-sol')
+        text = ('Farmers, agricultural traders, food manufacturers, consumer groups, '
+                'energy companies, ministries, universities and journalists debate '
+                'food prices, drought and energy costs on social media. ')
+        ontology = OntologyGenerator(client).generate(
+            document_texts=[(text * 300)[:50000]],
+            simulation_requirement='Simulate discussion of rising food and energy prices.')
+        assert len(ontology['entity_types']) == 10
+        assert 6 <= len(ontology['edge_types']) <= 10
+        print('PASS: live ontology generation with 50,000 characters and a legacy 4,096-token limit')
     print('PASS: CAMEL async tool execution and continuation' + (' (live API)' if live else ' (mock API)'))
 
 
