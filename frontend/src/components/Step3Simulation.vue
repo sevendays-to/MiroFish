@@ -105,6 +105,11 @@
 
     <!-- Main Content: Dual Timeline -->
     <div class="main-content-area" ref="scrollContainer">
+      <div v-if="startError" class="simulation-error" role="alert">
+        <strong>Simulation failed</strong>
+        <p>{{ startError }}</p>
+        <button class="action-btn" :disabled="isStarting" @click="doStartSimulation">Retry simulation</button>
+      </div>
       <!-- Timeline Header -->
       <div class="timeline-header" v-if="allActions.length > 0">
         <div class="timeline-stats">
@@ -262,7 +267,7 @@
           </div>
         </TransitionGroup>
 
-        <div v-if="allActions.length === 0" class="waiting-state">
+        <div v-if="allActions.length === 0 && !startError" class="waiting-state">
           <div class="pulse-ring"></div>
           <span>Waiting for agent actions...</span>
         </div>
@@ -496,6 +501,15 @@ const fetchRunStatus = async () => {
       const data = res.data
       
       runStatus.value = data
+
+      if (data.runner_status === 'failed') {
+        startError.value = data.error || 'Simulation failed without error details'
+        phase.value = -1
+        stopPolling()
+        addLog(`✗ Simulation failed: ${startError.value}`)
+        emit('update-status', 'error')
+        return
+      }
       
       // 分别检测各平台的轮次变化并输出日志
       if (data.twitter_current_round > prevTwitterRound.value) {
@@ -697,6 +711,16 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.simulation-error {
+  padding: 24px;
+  color: #F44336;
+}
+
+.simulation-error p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .simulation-panel {
   height: 100%;
   display: flex;
